@@ -11,15 +11,19 @@ from playwright.async_api import TimeoutError as PlaywrightTimeoutError, async_p
 
 logger = logging.getLogger(__name__)
 
+# Easy to change in one place if the entry domain changes again.
+DLSTREAMS_ENTRY_ORIGIN = "https://dlhd.dad"
+
 class ExtractorError(Exception):
     """Custom exception for extraction errors."""
     pass
 
 class DLStreamsExtractor:
-    """Extractor for dlstreams.top streams."""
+    """Extractor for dlhd.dad / dlstreams streams."""
 
     def __init__(self, request_headers: dict = None, proxies: list = None):
         self.request_headers = request_headers or {}
+        self.entry_origin = DLSTREAMS_ENTRY_ORIGIN
         self.base_headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
         }
@@ -75,7 +79,7 @@ class DLStreamsExtractor:
 
         warmup_urls = [
             watch_url,
-            f"https://dlstreams.top/stream/stream-{channel_id}.php",
+            f"{self.entry_origin}/stream/stream-{channel_id}.php",
         ]
 
         for warmup_url in warmup_urls:
@@ -151,7 +155,7 @@ class DLStreamsExtractor:
             return cached[0]
 
         channel_key = f"premium{channel_id}"
-        watch_url = f"https://dlstreams.top/watch.php?id={channel_id}"
+        watch_url = f"{self.entry_origin}/watch.php?id={channel_id}"
 
         logger.info("DLStreams browser key fetch starting for %s", key_url)
         try:
@@ -225,7 +229,7 @@ class DLStreamsExtractor:
         if cached_manifest and cached_manifest[1] > now:
             return
 
-        watch_url = f"https://dlstreams.top/watch.php?id={channel_id}"
+        watch_url = f"{self.entry_origin}/watch.php?id={channel_id}"
         logger.info("DLStreams browser session capture starting for %s", channel_key)
         try:
             async with async_playwright() as playwright:
@@ -307,14 +311,14 @@ class DLStreamsExtractor:
         return self.session
 
     async def extract(self, url: str, **kwargs) -> Dict[str, Any]:
-        """Extracts the M3U8 URL and headers bypassing dlstreams.top."""
+        """Extracts the M3U8 URL and headers bypassing the public watch page."""
         try:
             # Extract ID from URL or use as is if numeric
             channel_id = self._extract_channel_id(url)
 
             channel_key = f"premium{channel_id}"
             session = await self._get_session()
-            watch_url = f"https://dlstreams.top/watch.php?id={channel_id}"
+            watch_url = f"{self.entry_origin}/watch.php?id={channel_id}"
 
             await self._prime_dlstreams_session(session, watch_url, channel_id)
             await self._browser_prime_verification(watch_url, channel_key)
@@ -327,7 +331,7 @@ class DLStreamsExtractor:
 
             # 1. SERVER LOOKUP: Fetch dynamic server_key
             lookup_url = f"https://sec.ai-hls.site/server_lookup?channel_id={channel_key}"
-            logger.info(f"Looking up server key for: {channel_key} (Bypassing dlstreams.top)")
+            logger.info(f"Looking up server key for: {channel_key} (Bypassing {self.entry_origin})")
             
             lookup_headers = {
                 "Referer": f"{iframe_origin}/",
