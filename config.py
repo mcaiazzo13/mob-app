@@ -140,6 +140,16 @@ RECORDINGS_DIR = os.environ.get("RECORDINGS_DIR", "recordings")
 MAX_RECORDING_DURATION = int(os.environ.get("MAX_RECORDING_DURATION", 28800))  # 8 hours default
 RECORDINGS_RETENTION_DAYS = int(os.environ.get("RECORDINGS_RETENTION_DAYS", 7))  # Auto-cleanup after 7 days
 
+# --- Version/Mode Configuration ---
+APP_VERSION = "2.5.1"
+
+# Detect if we are running in Full or Light mode
+_has_solvers = os.path.exists("flaresolverr") and (os.path.exists("byparr") or os.path.exists("byparr_src"))
+VERSION_MODE = "Full" if _has_solvers else "Light"
+
+# --- WARP Configuration ---
+ENABLE_WARP = os.environ.get("ENABLE_WARP", "false").lower() == "true"
+
 # Create recordings directory if DVR is enabled
 if DVR_ENABLED and not os.path.exists(RECORDINGS_DIR):
     os.makedirs(RECORDINGS_DIR)
@@ -148,9 +158,10 @@ if DVR_ENABLED and not os.path.exists(RECORDINGS_DIR):
 # MPD Processing Mode: 'ffmpeg' (transcoding) or 'legacy' (mpd_converter)
 MPD_MODE = os.environ.get("MPD_MODE", "legacy").lower()
 
-# --- Byparr Configuration ---
-BYPARR_URL = os.environ.get("BYPARR_URL", "http://localhost:8191").rstrip("/")
-BYPARR_TIMEOUT = int(os.environ.get("BYPARR_TIMEOUT", 30))
+# --- FlareSolverr / Byparr Configuration ---
+FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191").rstrip("/")
+FLARESOLVERR_TIMEOUT = int(os.environ.get("FLARESOLVERR_TIMEOUT", 30))
+BYPARR_URL = os.environ.get("BYPARR_URL", "http://localhost:8080").rstrip("/")
 if MPD_MODE not in ("ffmpeg", "legacy"):
     logging.warning(f"⚠️ MPD_MODE '{MPD_MODE}' is invalid. Using 'legacy' as default.")
     MPD_MODE = "legacy"

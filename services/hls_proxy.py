@@ -41,6 +41,9 @@ from config import (
     API_PASSWORD,
     check_password,
     MPD_MODE,
+    VERSION_MODE,
+    APP_VERSION,
+    ENABLE_WARP,
 )
 from extractors.generic import GenericHLSExtractor, ExtractorError
 from services.manifest_rewriter import ManifestRewriter
@@ -98,6 +101,7 @@ if MPD_MODE == "legacy":
 ) = None, None, None, None, None
 StreamHGExtractor = None
 CinemaCityExtractor = None
+DeltabitExtractor = None
 
 
 logger = logging.getLogger(__name__)
@@ -298,6 +302,12 @@ except Exception as e:
     print(f"❌ CinemaCityExtractor FAILED to load: {e}")
     CinemaCityExtractor = None
 
+try:
+    from extractors.deltabit import DeltabitExtractor
+    logger.info("✅ DeltabitExtractor module loaded.")
+except ImportError:
+    logger.warning("⚠️ DeltabitExtractor module not found.")
+
 
 class HLSProxy:
     """Proxy HLS per gestire stream Vavoo, DLHD, HLS generici e playlist builder con supporto AES-128"""
@@ -330,6 +340,58 @@ class HLSProxy:
         # Cache for proxy sessions (proxy_url -> session)
         # This reuses connections for the same proxy to improve performance
         self.proxy_sessions = {}
+
+        # Version information
+        self.latest_version = "Checking..."
+        self.warp_status = "Disabled" if not ENABLE_WARP else "Checking..."
+
+    async def start_tasks(self):
+        """Starts background tasks for the proxy."""
+        asyncio.create_task(self._update_latest_version())
+        # Always start WARP check (universal trace method)
+        asyncio.create_task(self._update_warp_status_loop())
+
+    async def _update_warp_status_loop(self):
+        """Periodically checks WARP status via Cloudflare trace (Universal)."""
+        while True:
+            try:
+                # We use the internal session to check the actual connection state
+                session = await self._get_session()
+                async with session.get("https://www.cloudflare.com/cdn-cgi/trace", timeout=5) as resp:
+                    if resp.status == 200:
+                        text = await resp.text()
+                        if "warp=on" in text:
+                            self.warp_status = "Connected"
+                        else:
+                            self.warp_status = "Disconnected"
+                    else:
+                        self.warp_status = "Error"
+            except Exception:
+                self.warp_status = "Disconnected"
+            
+            await asyncio.sleep(60) # Check every minute
+
+    async def _update_latest_version(self):
+        """Checks GitHub config.py for the latest version."""
+        try:
+            url = "https://raw.githubusercontent.com/realbestia1/EasyProxy/main/config.py"
+            # We use a direct session for this
+            session = await self._get_session()
+            async with session.get(url, timeout=5) as resp:
+                if resp.status == 200:
+                    text = await resp.text()
+                    # Use regex to find APP_VERSION = "..." or '...'
+                    match = re.search(r'APP_VERSION\s*=\s*["\']([^"\']+)["\']', text)
+                    if match:
+                        self.latest_version = match.group(1)
+                        logger.info(f"🆕 Latest version detected in GitHub config.py: {self.latest_version}")
+                    else:
+                        self.latest_version = "Unknown"
+                else:
+                    self.latest_version = "Error"
+        except Exception as e:
+            logger.warning(f"⚠️ Failed to check latest version from GitHub config: {e}")
+            self.latest_version = "Unknown"
 
     @staticmethod
     def _strip_fake_png_header_from_ts(content: bytes) -> bytes:
@@ -459,6 +521,11 @@ class HLSProxy:
         - proxy_url: The proxy URL being used, or None for direct connection
         """
         proxy = get_proxy_for_url(url, TRANSPORT_ROUTES, GLOBAL_PROXIES)
+        
+        # Force direct connection for domains that block proxies/WARP
+        if any(d in url for d in ["cinemacity.cc", "cccdn.net"]):
+            proxy = None
+            
         prefer_default_family = "ai.the-sunmoon.site/key/" in url
 
         if proxy:
@@ -638,6 +705,12 @@ class HLSProxy:
                             request_headers, proxies=GLOBAL_PROXIES
                         )
                     return self.extractors[key]
+                elif host == "deltabit":
+                    if key not in self.extractors:
+                        self.extractors[key] = DeltabitExtractor(
+                            request_headers, proxies=GLOBAL_PROXIES
+                        )
+                    return self.extractors[key]
                 elif host == "streamhg":
                     if key not in self.extractors:
                         self.extractors[key] = StreamHGExtractor(
@@ -800,10 +873,12 @@ class HLSProxy:
                         request_headers, proxies=proxy_list
                     )
                 return self.extractors[key]
-            elif "popcdn.day" in url:
+            elif "popcdn.day" in url or "freeshot.live" in url:
                 key = "freeshot"
                 proxy = get_proxy_for_url(
-                    "popcdn.day", TRANSPORT_ROUTES, GLOBAL_PROXIES
+                    "popcdn.day" if "popcdn.day" in url else "freeshot.live", 
+                    TRANSPORT_ROUTES, 
+                    GLOBAL_PROXIES
                 )
                 proxy_list = [proxy] if proxy else []
                 if key not in self.extractors:
@@ -1089,9 +1164,6 @@ class HLSProxy:
                     
                     combined_headers[header_name] = param_value
 
-            # DEBUG LOGGING
-            print(f"🔍 [DEBUG] Processing URL: {target_url}")
-            print(f"   Headers: {dict(request.headers)}")
 
             captured_manifest = None
             is_rewritten_hls_segment = request.path.startswith("/proxy/hls/segment.")
@@ -1110,7 +1182,6 @@ class HLSProxy:
                     }:
                         continue
                     stream_headers[header_name] = header_value
-                print("   Extractor: direct-segment-proxy")
             else:
                 extractor = await self.get_extractor(target_url, combined_headers)
                 
@@ -1121,7 +1192,6 @@ class HLSProxy:
                 if extractor:
                     extractor.request_headers = combined_headers
 
-                print(f"   Extractor: {type(extractor).__name__}")
 
                 # Passa il flag force_refresh all'estrattore
                 result = await extractor.extract(
@@ -1133,8 +1203,6 @@ class HLSProxy:
                 stream_headers = result.get("request_headers", {})
                 captured_manifest = result.get("captured_manifest")
 
-            print(f"   Resolved Stream URL: {stream_url}")
-            print(f"   Stream Headers: {stream_headers}")
 
             # Se redirect_stream è False, restituisci il JSON con i dettagli (stile MediaFlow)
             if not redirect_stream:
@@ -1583,8 +1651,9 @@ class HLSProxy:
                         "vidmoly",
                         "vidoza",
                         "turbovidplay",
-                        "livetv",
-                        "f16px",
+                         "livetv",
+                         "deltabit",
+                         "f16px",
                     ],
                     "examples": [
                         f"{request.scheme}://{request.host}/extractor/video?d=https://vavoo.to/channel/123",
@@ -2097,9 +2166,16 @@ class HLSProxy:
                 target[name] = value
 
             # Passa attraverso alcuni headers del client, ma FILTRA quelli che potrebbero leakare l'IP
+            # Rimuoviamo specificamente i condizionali che possono causare 412/416 con URL dinamici
             for header in ["range", "if-none-match", "if-modified-since"]:
                 if header in request.headers:
                     headers[header] = request.headers[header]
+
+            # ✅ FIX: Esplicita rimozione di If-Match e If-Range che spesso causano 416 su CDNs dinamici
+            for h in ["if-match", "if-range"]:
+                if h in headers: del headers[h]
+                keys_to_remove = [k for k in headers.keys() if k.lower() == h]
+                for k in keys_to_remove: del headers[k]
 
             # Manifest requests must be fetched in full. Some players probe the
             # entry URL with a byte range, which turns upstream playlists into
@@ -2152,7 +2228,7 @@ class HLSProxy:
                     f"📡 [Proxy Stream] Using session{f' via proxy {session_proxy}' if session_proxy else ' (direct)'} for: {stream_url}"
                 )
             # ✅ TLS FINGERPRINT BYPASS: Use curl_cffi for problematic CDNs (CinemaCity)
-            use_curl_cffi = HAS_CURL_CFFI and "cccdn.net" in stream_url
+            use_curl_cffi = HAS_CURL_CFFI and any(d in stream_url for d in ["cccdn.net", "cinemacity.cc"])
             
             if use_curl_cffi:
                 curl_proxy = f"{request.scheme}://{session_proxy}" if session_proxy else None
@@ -2192,19 +2268,21 @@ class HLSProxy:
 
             async with resp_ctx as resp:
                 content_type = resp.headers.get("content-type", "")
-                print(f"   Upstream Response: {resp.status} [{content_type}]")
 
                 # ✅ FIX: Se la risposta non è OK, restituisci direttamente l'errore senza processare
                 if resp.status not in [200, 206]:
                     error_body = await resp.read()
-                    logger.warning(
-                        f"⚠️ Upstream returned error {resp.status} for {stream_url}"
-                    )
-                    # ✅ DEBUG: Log error body to understand what CDN is complaining about
-                    try:
-                        print(f"   ❌ Error Body: {error_body.decode('utf-8')[:500]}")
-                    except:
-                        print(f"   ❌ Error Body (bytes): {error_body[:200]}")
+                    
+                    # DoodStream CDNs often report a 416 when VLC probes the end of file.
+                    # If it's benign (video still works), we silence it below WARNING level.
+                    is_dood_416 = resp.status == 416 and "cloudatacdn.com" in stream_url
+                    
+                    if is_dood_416:
+                        logger.debug(f"ℹ️ DoodStream 416 (benign/range-end): {stream_url}")
+                    else:
+                        logger.warning(
+                            f"⚠️ Upstream returned error {resp.status} for {stream_url}"
+                        )
                     return web.Response(
                         body=error_body,
                         status=resp.status,
@@ -2225,13 +2303,15 @@ class HLSProxy:
                 )
                 if is_direct_media_stream:
                     response_headers = {}
+                    # Filtriamo etag e last-modified per evitare che il client (VLC) 
+                    # mandi If-Match/If-Modified-Since nelle richieste successive.
                     for header in [
                         "content-type",
                         "content-length",
                         "content-range",
                         "accept-ranges",
-                        "last-modified",
-                        "etag",
+                        # "last-modified", # RIMOSSO
+                        # "etag",          # RIMOSSO
                     ]:
                         if header in resp.headers:
                             response_headers[header] = resp.headers[header]
@@ -2627,6 +2707,16 @@ class HLSProxy:
         """Serve la pagina principale index.html."""
         try:
             html_content = self._read_template("index.html")
+            
+            # Determine version status class
+            is_outdated = self.latest_version not in ["Checking...", "Unknown", "Error", APP_VERSION]
+            version_status_class = "outdated" if is_outdated else ""
+
+            html_content = html_content.replace("{{VERSION_MODE}}", VERSION_MODE)
+            html_content = html_content.replace("{{APP_VERSION}}", APP_VERSION)
+            html_content = html_content.replace("{{LATEST_VERSION}}", self.latest_version)
+            html_content = html_content.replace("{{VERSION_STATUS_CLASS}}", version_status_class)
+            html_content = html_content.replace("{{WARP_STATUS}}", self.warp_status)
             return web.Response(text=html_content, content_type="text/html")
         except Exception as e:
             logger.error(f"❌ Critical error: unable to load 'index.html': {e}")
@@ -2692,6 +2782,16 @@ class HLSProxy:
         """Serve la pagina HTML delle informazioni."""
         try:
             html_content = self._read_template("info.html")
+
+            # Determine version status class
+            is_outdated = self.latest_version not in ["Checking...", "Unknown", "Error", APP_VERSION]
+            version_status_class = "outdated" if is_outdated else ""
+
+            html_content = html_content.replace("{{VERSION_MODE}}", VERSION_MODE)
+            html_content = html_content.replace("{{APP_VERSION}}", APP_VERSION)
+            html_content = html_content.replace("{{LATEST_VERSION}}", self.latest_version)
+            html_content = html_content.replace("{{VERSION_STATUS_CLASS}}", version_status_class)
+            html_content = html_content.replace("{{WARP_STATUS}}", self.warp_status)
             return web.Response(text=html_content, content_type="text/html")
         except Exception as e:
             logger.error(f"❌ Critical error: unable to load 'info.html': {e}")
@@ -2723,7 +2823,8 @@ class HLSProxy:
         """Endpoint API che restituisce le informazioni sul server in formato JSON."""
         info = {
             "proxy": "HLS Proxy Server",
-            "version": "2.5.0",  # Aggiornata per supporto AES-128
+            "version": APP_VERSION,  # Aggiornata per supporto AES-128
+            "mode": VERSION_MODE,
             "status": "✅ Running",
             "features": [
                 "✅ Proxy HLS streams",
