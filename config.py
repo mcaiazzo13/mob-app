@@ -148,7 +148,7 @@ MAX_RECORDING_DURATION = int(os.environ.get("MAX_RECORDING_DURATION", 28800))  #
 RECORDINGS_RETENTION_DAYS = int(os.environ.get("RECORDINGS_RETENTION_DAYS", 7))  # Auto-cleanup after 7 days
 
 # --- Version/Mode Configuration ---
-APP_VERSION = "2.5.17"
+APP_VERSION = "2.5.18"
 
 # Detect if we are running in Full or Light mode
 _has_solvers = os.path.exists("flaresolverr") and (os.path.exists("byparr") or os.path.exists("byparr_src"))
@@ -173,7 +173,9 @@ ENABLE_REMUXING = os.environ.get("ENABLE_REMUXING", "true").lower() in ("true", 
 if MPD_MODE in ("none", "disabled"):
     ENABLE_REMUXING = False
 
-logging.info(f"🎬 MPD Mode: {MPD_MODE} (Remuxing: {'ON' if ENABLE_REMUXING else 'OFF'})")
+# Mostra il log solo se la variabile è stata impostata esplicitamente per evitare confusione
+if "MPD_MODE" in os.environ:
+    logging.info(f"🎬 MPD Mode: {MPD_MODE} (Remuxing: {'ON' if ENABLE_REMUXING else 'OFF'})")
 
 # --- FlareSolverr / Byparr Configuration ---
 FLARESOLVERR_URL = os.environ.get("FLARESOLVERR_URL", "http://localhost:8191").rstrip("/")
