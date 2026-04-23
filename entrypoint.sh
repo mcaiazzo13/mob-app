@@ -1,7 +1,7 @@
 #!/bin/bash
 export PYTHONPATH=/app
 
-WARP_EXCLUDED_HOSTS="${WARP_EXCLUDED_HOSTS:-cinemacity.cc,cccdn.net,strem.fun,real-debrid.com,realdebrid.com,api.real-debrid.com,premiumize.me,www.premiumize.me,alldebrid.com,api.alldebrid.com,debrid-link.com,debridlink.com,api.debrid-link.com,torbox.app,api.torbox.app,offcloud.com,api.offcloud.com,put.io,api.put.io}"
+WARP_EXCLUDED_HOSTS="${WARP_EXCLUDED_HOSTS:-cinemacity.cc,cccdn.net,strem.fun,torrentio.strem.fun,real-debrid.com,realdebrid.com,api.real-debrid.com,premiumize.me,www.premiumize.me,alldebrid.com,api.alldebrid.com,debrid-link.com,debridlink.com,api.debrid-link.com,torbox.app,api.torbox.app,offcloud.com,api.offcloud.com,put.io,api.put.io}"
 
 # --- Cloudflare WARP Setup ---
 if [ "$ENABLE_WARP" = "true" ]; then

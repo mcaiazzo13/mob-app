@@ -123,7 +123,12 @@ def get_proxy_for_url(url: str, transport_routes: list, global_proxies: list) ->
         proxy = random.choice(global_proxies) if global_proxies else None
         return proxy if is_proxy_alive(proxy) else None
 
+    normalized_url = url.lower()
+
     if "direct=1" in url or "warp=off" in url or "warp_bypass=1" in url:
+        return None
+
+    if any(domain in normalized_url for domain in WARP_EXCLUDE_DOMAINS):
         return None
 
     if transport_routes:
@@ -200,6 +205,7 @@ _default_warp_exclude_domains = [
     "cinemacity.cc",
     "cccdn.net",
     "strem.fun",
+    "torrentio.strem.fun",
     "real-debrid.com",
     "realdebrid.com",
     "api.real-debrid.com",
@@ -241,7 +247,7 @@ MAX_RECORDING_DURATION = int(os.environ.get("MAX_RECORDING_DURATION", 28800))
 RECORDINGS_RETENTION_DAYS = int(os.environ.get("RECORDINGS_RETENTION_DAYS", 7))
 
 # --- Version/Mode Configuration ---
-APP_VERSION = "2.5.78"
+APP_VERSION = "2.5.79"
 
 _has_solvers = os.path.exists("flaresolverr") and (
     os.path.exists("byparr") or os.path.exists("byparr_src")
