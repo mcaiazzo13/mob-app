@@ -643,7 +643,7 @@ class HLSProxy:
             if proxy in self.proxy_sessions:
                 cached_session = self.proxy_sessions[proxy]
                 if not cached_session.closed:
-                    logger.debug(f"♻️ Reusing cached proxy session: {proxy}")
+                    # logger.debug(f"♻️ Reusing cached proxy session: {proxy}")
                     return cached_session, proxy  # Reuse cached session
                 else:
                     # Remove closed session from cache
