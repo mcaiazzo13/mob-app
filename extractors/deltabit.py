@@ -283,10 +283,11 @@ class DeltabitExtractor:
                 # Cerca il link di uscita
                 next_url = None
                 for attempt in range(3):
+                    # 1. Cerca pulsanti espliciti
                     for a_tag in soup.find_all("a", href=True):
                         txt = a_tag.get_text().lower()
                         href = a_tag["href"]
-                        if "proceed to video" in txt or "continue" in txt:
+                        if any(x in txt for x in ["proceed to video", "continue", "guarda il video"]):
                             next_url = href
                             break
                         for btn in a_tag.find_all("button"):
@@ -295,15 +296,23 @@ class DeltabitExtractor:
                                  break
                         if next_url: break
                     
+                    # 2. Cerca link che sembrano ID video (escludendo homepage e pagine di servizio)
                     if not next_url:
-                        # Cerca link che contengono deltabit o altri redirector
-                        target_match = soup.find("a", href=re.compile(r'deltabit|mixdrop|clicka|safego', re.I))
-                        if target_match:
-                            next_url = target_match["href"]
+                        for a_tag in soup.find_all("a", href=re.compile(r'deltabit\.(co|sx|bz)/[a-zA-Z0-9]+', re.I)):
+                            href = a_tag["href"]
+                            # Escludi pagine statiche
+                            if not any(x in href.lower() for x in ["/login", "/registration", "/faq", "/tos", "/contact", "/category", "deltabit.co/ ", "deltabit.co/\""]):
+                                if len(href.split("/")[-1]) > 5: # Un ID video è solitamente lungo
+                                    next_url = href
+                                    break
 
                     if next_url:
                         if next_url.startswith("/"):
                             next_url = urljoin(current_url, next_url)
+                        # Se abbiamo trovato un link valido a deltabit con ID, usciamo dal loop dei redirector
+                        if "deltabit" in next_url.lower() and len(next_url.split("/")[-1]) > 5:
+                            current_url = next_url
+                            return current_url
                         current_url = next_url
                         break
                     
