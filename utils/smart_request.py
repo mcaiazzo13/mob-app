@@ -15,12 +15,21 @@ try:
 except ImportError:
     HAS_CURL_CFFI = False
 
-async def smart_request(cmd: str, url: str, headers: Optional[Dict] = None, post_data: Optional[str] = None, proxies: Optional[list] = None) -> Any:
+async def smart_request(
+    cmd: str,
+    url: str,
+    headers: Optional[Dict] = None,
+    post_data: Optional[str] = None,
+    proxies: Optional[list] = None,
+    bypass_warp: bool = None,
+) -> Any:
     """
     Effettua una richiesta intelligente: prova la via diretta, poi curl_cffi, e se fallisce usa FlareSolverr.
     """
     current_proxies = proxies or GLOBAL_PROXIES
-    proxy = get_proxy_for_url(url, TRANSPORT_ROUTES, current_proxies)
+    proxy = get_proxy_for_url(
+        url, TRANSPORT_ROUTES, current_proxies, bypass_warp=bypass_warp
+    )
     
     headers = headers or {}
     if "User-Agent" not in headers and "user-agent" not in headers:

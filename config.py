@@ -132,6 +132,12 @@ def get_proxy_for_url(url: str, transport_routes: list, global_proxies: list, by
         proxy = random.choice(global_proxies) if global_proxies else None
         return proxy if is_proxy_alive(proxy) else None
 
+    # `bypass_warp` means "force real IP / direct connection" for the whole flow.
+    # Do this before TRANSPORT_ROUTES so host-specific routes cannot silently
+    # reintroduce WARP or another proxy when the caller explicitly asked to bypass.
+    if bypass_warp:
+        return None
+
     normalized_url = url.lower()
 
     if transport_routes:

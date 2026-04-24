@@ -37,7 +37,9 @@ class CinemaCityExtractor:
     async def _get_session(self):
         if self.session is None or self.session.closed:
             timeout = ClientTimeout(total=60, connect=30, sock_read=30)
-            proxy = get_proxy_for_url(self.base_url, TRANSPORT_ROUTES, self.proxies)
+            proxy = get_proxy_for_url(
+                self.base_url, TRANSPORT_ROUTES, self.proxies, bypass_warp=True
+            )
             if proxy:
                 logger.debug("CinemaCity routing: PROXY (%s)", proxy)
             else:
@@ -60,7 +62,9 @@ class CinemaCityExtractor:
         if url: 
             payload["url"] = url
             # Determina dinamicamente il proxy per questo specifico URL
-            proxy = get_proxy_for_url(url, TRANSPORT_ROUTES, self.proxies)
+            proxy = get_proxy_for_url(
+                url, TRANSPORT_ROUTES, self.proxies, bypass_warp=True
+            )
             if proxy:
                 payload["proxy"] = {"url": proxy}
                 solver_proxy = get_solver_proxy_url(proxy)
@@ -204,7 +208,13 @@ class CinemaCityExtractor:
         }
 
         # Use SmartRequest (Direct or FlareSolverr fallback)
-        result = await smart_request("request.get", url, headers=headers, proxies=self.proxies)
+        result = await smart_request(
+            "request.get",
+            url,
+            headers=headers,
+            proxies=self.proxies,
+            bypass_warp=True,
+        )
         html = result.get("html", "")
         dynamic_cookies = result.get("cookies", {})
 
