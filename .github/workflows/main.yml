@@ -2,22 +2,33 @@ name: Sync Daily
 
 on:
   schedule:
-    - cron: '0 4 * * *' # Si aggiorna tutti i giorni alle 4:00 di notte
-  workflow_dispatch: # Ti permette di farlo a mano se vuoi, cliccando un bottone
+    - cron: '0 4 * * *' # ogni giorno alle 04:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
+
     steps:
       - name: Checkout repo
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
         with:
-          ref: main # Lascia "main", a meno che il progetto usi "master"
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
 
       - name: Sync Upstream
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
+        id: sync
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4.3
         with:
+          target_sync_branch: main
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
           upstream_sync_repo: Realbestia1/Easyproxy
           upstream_sync_branch: main
-          target_sync_branch: main
-          git_push_args: --force
+          target_branch_push_args: --force
+
+      - name: Show result
+        run: echo "has_new_commits = ${{ steps.sync.outputs.has_new_commits }}"
