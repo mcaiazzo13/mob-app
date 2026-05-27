@@ -26,7 +26,7 @@ jobs:
         uses: aormsby/Fork-Sync-With-Upstream-action@v3.4.3
         with:
           target_sync_branch: main
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          target_repo_token: ${{ secrets.PAT_SYNC }}
           upstream_sync_repo: Realbestia1/Easyproxy
           upstream_sync_branch: main
           target_branch_push_args: --force
