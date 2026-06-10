@@ -284,6 +284,10 @@ async def shutdown_flaresolverr():
                 await asyncio.wait_for(proc.wait(), timeout=5)
             except (asyncio.TimeoutError, ProcessLookupError):
                 pass
+            subprocess.run(
+                ["pkill", "-f", "chromium.*headless"],
+                capture_output=True, timeout=5,
+            )
         except ProcessLookupError:
             pass
         except Exception:
