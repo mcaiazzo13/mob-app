@@ -21,7 +21,6 @@ from services.proxy_shared import (
     get_extractor_proxies,
     mark_proxy_dead,
     BYPASSED_WARP_DOMAINS,
-    ProxyConnector,
     ClientSession,
     ClientTimeout,
     TCPConnector,
@@ -408,36 +407,28 @@ class HLSProxyCoreMixin:
         _ENABLE_WARP = _shared.ENABLE_WARP
         _WARP_PROXY_URL = _shared.WARP_PROXY_URL
         result = "Disconnected"
-        if _ENABLE_WARP:
-            warp_ip = None
-            # Try via SOCKS5 proxy first (wireproxy)
-            if _WARP_PROXY_URL:
+        if _ENABLE_WARP and _WARP_PROXY_URL:
+            # Quick socket test to 127.0.0.1:1080 (no DNS, always fast)
+            try:
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_connection("127.0.0.1", 1080), timeout=3
+                )
+                writer.close()
+                result = "Connected"
+                # Try to fetch the WARP IP via the proxy
                 try:
-                    connector = ProxyConnector.from_url(_WARP_PROXY_URL)
-                    async with ClientSession(connector=connector, timeout=ClientTimeout(total=5)) as session:
+                    connector = get_connector_for_proxy(
+                        _WARP_PROXY_URL, limit=0, family=socket.AF_INET
+                    )
+                    async with ClientSession(connector=connector, timeout=ClientTimeout(total=10)) as session:
                         async with session.get("https://api.ipify.org?format=json") as resp:
                             if resp.status == 200:
                                 data = await resp.json()
-                                warp_ip = data.get("ip", "")
-                                self._warp_ip = warp_ip
-                                result = "Connected"
+                                self._warp_ip = data.get("ip", "")
                 except Exception:
                     pass
-            # Fallback to direct (WARP desktop app on Windows or system-level WARP)
-            if not warp_ip:
-                try:
-                    async with ClientSession(timeout=ClientTimeout(total=5)) as session:
-                        async with session.get("https://www.cloudflare.com/cdn-cgi/trace") as resp:
-                            if resp.status == 200:
-                                text = await resp.text()
-                                if "warp=on" in text:
-                                    for line in text.splitlines():
-                                        if line.startswith("ip="):
-                                            self._warp_ip = line.split("=", 1)[1].strip()
-                                            break
-                                    result = "Connected"
-                except Exception:
-                    pass
+            except (OSError, asyncio.TimeoutError):
+                pass
         self._warp_cached = result
         self._warp_check_ts = now
         return self._warp_cached
