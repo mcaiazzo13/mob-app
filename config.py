@@ -119,7 +119,7 @@ def get_preferred_proxy(proxies: list | None) -> str | None:
 
 
 async def find_first_alive_async(proxies: list, concurrency: int | None = None) -> str | None:
-    """Test proxies in parallel with ThreadPoolExecutor, return first alive. Respects strict flag."""
+    """Test proxies in priority order with a staggered start, returning the highest-priority alive proxy."""
     if not proxies:
         return None
     if getattr(proxies, "strict", False):
@@ -131,27 +131,63 @@ async def find_first_alive_async(proxies: list, concurrency: int | None = None) 
         proxies = [p for p in proxies if p not in DEAD_PROXIES or now >= DEAD_PROXIES.get(p, 0)]
     if not proxies:
         return None
-    sem = asyncio.Semaphore(concurrency)
+    
     loop = asyncio.get_event_loop()
-
-    async def _check(proxy: str) -> str | None:
-        async with sem:
+    tasks = []
+    
+    for i, p in enumerate(proxies):
+        if not p:
+            continue
+            
+        async def _check_single(proxy_url=p, idx=i):
             try:
-                await loop.run_in_executor(None, _socket_check, proxy, 5)
-                return proxy
+                await loop.run_in_executor(None, _socket_check, proxy_url, 3)
+                return idx, proxy_url
             except (OSError, socket.timeout):
-                return None
+                return idx, None
 
-    tasks = {asyncio.create_task(_check(p)): p for p in proxies if p}
-    pending = set(tasks.keys())
-    while pending:
-        done, pending = await asyncio.wait(pending, return_when=asyncio.FIRST_COMPLETED)
-        for t in done:
-            result = t.result()
-            if result is not None:
-                for pt in pending:
-                    pt.cancel()
-                return result
+        t = asyncio.create_task(_check_single())
+        tasks.append(t)
+        
+        # Wait up to 250ms to give higher-priority proxies a head start to complete
+        start_time = time.time()
+        succeeded_high_priority = False
+        while time.time() - start_time < 0.25:
+            done_tasks = [tk for tk in tasks if tk.done()]
+            results = []
+            for tk in done_tasks:
+                res_idx, res_val = tk.result()
+                if res_val is not None:
+                    results.append((res_idx, res_val))
+            if results:
+                results.sort(key=lambda x: x[0])
+                best_idx, best_proxy = results[0]
+                if best_idx == 0:
+                    succeeded_high_priority = True
+                    break
+            await asyncio.sleep(0.02)
+            
+        if succeeded_high_priority:
+            break
+
+    # Gather all launched tasks
+    results = await asyncio.gather(*tasks, return_exceptions=True)
+    succeeded = []
+    for r in results:
+        if isinstance(r, tuple):
+            idx, res = r
+            if res is not None:
+                succeeded.append((idx, res))
+                
+    # Cancel any remaining pending tasks
+    for t in tasks:
+        if not t.done():
+            t.cancel()
+
+    if succeeded:
+        succeeded.sort(key=lambda x: x[0])
+        return succeeded[0][1]
+        
     return None
 
 
@@ -703,7 +739,7 @@ API_PASSWORD = os.environ.get("API_PASSWORD")
 PORT = int(os.environ.get("PORT", 7860))
 
 # --- Version/Mode Configuration ---
-APP_VERSION = "2.9.12"
+APP_VERSION = "2.9.13"
 
 _has_solvers = os.path.exists("flaresolverr")
 VERSION_MODE = "Full" if _has_solvers else "Light"
