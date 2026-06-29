@@ -366,13 +366,14 @@ class HLSProxyExtractorHandlerMixin:
                 ]
             ) or isinstance(e, (asyncio.TimeoutError, asyncio.CancelledError))
 
+            error_desc = str(e) or type(e).__name__
             if isinstance(e, asyncio.CancelledError):
                 logger.info("Extractor request cancelled (client disconnected)")
                 raise
             if is_expected_error:
-                logger.warning(f"⚠️ Extractor request failed (expected error): {e}")
+                logger.warning(f"⚠️ Extractor request failed (expected error): {error_desc}")
             else:
-                logger.error(f"❌ Error in extractor request: {e}")
+                logger.error(f"❌ Error in extractor request: {error_desc}")
                 import traceback
                 traceback.print_exc()
 
@@ -381,7 +382,7 @@ class HLSProxyExtractorHandlerMixin:
                 status_code = 404
 
             return web.json_response(
-                {"error": str(e), "status": "error"},
+                {"error": error_desc, "status": "error"},
                 status=status_code
             )
         finally:
