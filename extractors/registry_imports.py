@@ -41,6 +41,7 @@ logger = logging.getLogger("extractors.registry")
 DLStreamsExtractor = None
 StreamHGExtractor = None
 VidXgoExtractor = None
+EmbedStExtractor = None
 
 
 # Importazione condizionale degli estrattori
@@ -210,6 +211,13 @@ except Exception as e:
     logger.warning("⚠️ DLStreamsExtractor failed to load: %s", e)
     DLStreamsExtractor = None
 
+try:
+    from extractors.embedst import EmbedStExtractor
+    logger.info("✅ EmbedStExtractor module loaded.")
+except Exception as e:
+    logger.warning("⚠️ EmbedStExtractor failed to load: %s", e)
+    EmbedStExtractor = None
+
 
 __all__ = [
     "VavooExtractor",
@@ -239,4 +247,5 @@ __all__ = [
     "DLStreamsExtractor",
     "StreamHGExtractor",
     "VidXgoExtractor",
+    "EmbedStExtractor",
 ]
