@@ -28,6 +28,29 @@ from services.proxy_shared import (
     prefer_default_family_for_url,
     resolve_extractor,
 )
+class SharedSessionWrapper:
+    def __init__(self, session):
+        object.__setattr__(self, "_session", session)
+
+    def __getattr__(self, name):
+        return getattr(self._session, name)
+
+    def __setattr__(self, name, value):
+        setattr(self._session, name, value)
+
+    @property
+    def closed(self) -> bool:
+        return self._session.closed
+
+    async def close(self):
+        pass
+
+    async def __aenter__(self):
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        pass
+
 
 class HLSProxyCoreMixin:
 
@@ -465,30 +488,6 @@ class HLSProxyCoreMixin:
                     await asyncio.sleep(1.0)
         except Exception as e:
             logging.error(f"❌ Error in dynamic WARP bypass: {e}")
-
-class SharedSessionWrapper:
-    def __init__(self, session):
-        object.__setattr__(self, "_session", session)
-
-    def __getattr__(self, name):
-        return getattr(self._session, name)
-
-    def __setattr__(self, name, value):
-        setattr(self._session, name, value)
-
-    @property
-    def closed(self) -> bool:
-        return self._session.closed
-
-    async def close(self):
-        pass
-
-    async def __aenter__(self):
-        return self
-
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        pass
-
 
     async def _get_proxy_session(self, url: str, bypass_warp: bool = False, forced_proxy: str | None = None):
         """Create a fresh session or reuse an existing one for the given URL.
