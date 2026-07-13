@@ -132,7 +132,7 @@ class VoeExtractor(BaseExtractor):
                     "mediaflow_endpoint": "hls_proxy",
                 }
 
-        logger.warning(f"VOE: no pattern matched for {url}, html length={len(text)}")
+        logger.warning(f"VOE: no pattern matched for {url}")
         raise ExtractorError(f"VOE: unable to locate obfuscated payload or external script URL [{url}]")
 
     async def _extract_obfuscated(self, url: str, text: str, match: re.Match) -> dict:
