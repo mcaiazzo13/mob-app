@@ -743,9 +743,12 @@ class HLSProxyStreamingMixin:
 
                 for header in [
                     "content-type",
-                    "content-length",
-                    "content-range",
-                    "accept-ranges",
+                    # Canonical casing: Samsung AVPlay matches these names
+                    # case-sensitively and ignores lowercase Content-Range,
+                    # so non-faststart MP4s never seek to their moov box.
+                    "Content-Length",
+                    "Content-Range",
+                    "Accept-Ranges",
                     "last-modified",
                     "etag",
                 ]:
@@ -1194,6 +1197,7 @@ class HLSProxyStreamingMixin:
             # it dies. Refresh it here, with the session that fetches the
             # playlist, so the token matches this egress address.
             from extractors.dlstreams import (
+                decrypt_premium_playlist,
                 ensure_premium_playlist_url,
                 invalidate_premium_playlist_token,
                 premium_playlist_parts,
@@ -1685,7 +1689,7 @@ class HLSProxyStreamingMixin:
                         "Access-Control-Allow-Methods": "GET, HEAD, OPTIONS",
                         "Access-Control-Allow-Headers": "Range, Content-Type",
                     }
-                    for h in ["content-length", "content-range", "accept-ranges"]:
+                    for h in ["Content-Length", "Content-Range", "Accept-Ranges"]:
                         if h in resp.headers: response_headers[h] = resp.headers[h]
 
                     response = web.StreamResponse(status=resp.status, headers=response_headers)
@@ -1765,6 +1769,8 @@ class HLSProxyStreamingMixin:
 
                 if manifest_content:
                     logger.info(f"📄 HLS manifest detected: {stream_url}")
+                    if is_premium_manifest:
+                        manifest_content = decrypt_premium_playlist(manifest_content, stream_url)
                     proxy_base = get_public_base_url(request)
                     original_url = request.query.get("orig_url") or request.query.get("url") or request.query.get("d", "")
                     use_short_hls_urls = should_use_short_manifest_urls(
@@ -1954,9 +1960,12 @@ class HLSProxyStreamingMixin:
 
                 for header in [
                     "content-type",
-                    "content-length",
-                    "content-range",
-                    "accept-ranges",
+                    # Canonical casing: Samsung AVPlay matches these names
+                    # case-sensitively and ignores lowercase Content-Range,
+                    # so non-faststart MP4s never seek to their moov box.
+                    "Content-Length",
+                    "Content-Range",
+                    "Accept-Ranges",
                     "last-modified",
                     "etag",
                 ]:
